@@ -23,13 +23,10 @@ table{width:100%;border-collapse:collapse;min-width:650px}th,td{border-bottom:1p
 .badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:12px}
 @media(max-width:700px){header h1{font-size:20px}.stats{grid-template-columns:repeat(2,1fr)}.card{padding:12px}table{font-size:14px}th,td{padding:8px 6px}}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<style>.auth-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 4px 14px rgba(0,0,0,.04)}.auth-row{display:flex;gap:8px;flex-wrap:wrap}.auth-row input{flex:1;min-width:180px}.auth-status{font-size:13px;color:#6b7280;margin-top:8px}.cloud-ok{color:#15803d}.cloud-off{color:#b45309}</style>
 </head>
 <body>
-<header><h1>🎮 副本完成度管理器</h1><p>手機、電腦皆可使用｜登入後資料自動同步到雲端</p></header>
-<main><section class="auth-card"><h2>☁️ 線上帳號與同步</h2><div class="auth-row"><input id="authEmail" type="email" placeholder="Email"><input id="authPassword" type="password" placeholder="密碼"><button onclick="signUp()">註冊</button><button onclick="signIn()">登入</button><button class="secondary" onclick="signOut()">登出</button></div><div id="authStatus" class="auth-status">尚未登入；目前使用本機資料。</div></section>
-<section class="card">
+<header><h1>🎮 副本完成度管理器</h1><p>手機、電腦皆可使用｜資料儲存在目前裝置</p></header>
+<main><section class="card">
 <h2>📊 總覽</h2>
 <div class="stats">
 <div class="stat"><b id="playerCount">0</b><span>玩家人數</span></div>
@@ -79,23 +76,9 @@ table{width:100%;border-collapse:collapse;min-width:650px}th,td{border-bottom:1p
 
 <script>
 const KEY="dungeon_completion_manager_v1";
-const SUPABASE_URL="https://zdjfahfgityzaitryozh.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY="sb_publishable_GLuRjdaYVulrcaNTCRuUUA_CziKo_sl";
-const { createClient } = window.supabase;
-const supabaseClient=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true}});
 let data=JSON.parse(localStorage.getItem(KEY)||'null')||{players:[],dungeons:[],done:{},scores:{}};
 data.scores=data.scores||{};
-let currentUser=null,saveTimer=null,loadingCloud=false,realtimeChannel=null;
-function localSave(){localStorage.setItem(KEY,JSON.stringify(data));render();}
-function save(){localSave();if(currentUser&&!loadingCloud){clearTimeout(saveTimer);saveTimer=setTimeout(saveCloud,500);}}
-async function saveCloud(){if(!currentUser)return;const payload={user_id:currentUser.id,data,updated_at:new Date().toISOString()};const {error}=await supabaseClient.from('dungeon_app_data').upsert(payload,{onConflict:'user_id'});if(error){console.error(error);setAuthStatus('雲端儲存失敗：'+error.message,false)}else setAuthStatus('☁️ 已登入，資料已同步到雲端。',true)}
-function setAuthStatus(msg,ok){const el=document.getElementById('authStatus');el.textContent=msg;el.className='auth-status '+(ok?'cloud-ok':'cloud-off')}
-async function loadCloud(){if(!currentUser)return;loadingCloud=true;const {data:row,error}=await supabaseClient.from('dungeon_app_data').select('data').eq('user_id',currentUser.id).maybeSingle();if(error){loadingCloud=false;setAuthStatus('讀取雲端資料失敗：'+error.message,false);return}if(row&&row.data){data=row.data;data.players=data.players||[];data.dungeons=(data.dungeons||[]).map(d=>({...d,score:Number(d.score??10)}));data.done=data.done||{};data.scores=data.scores||{};localStorage.setItem(KEY,JSON.stringify(data))}else{await saveCloud()}loadingCloud=false;render()}
-async function signUp(){const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value;if(!email||!password)return alert('請輸入 Email 和密碼。');if(password.length<6)return alert('密碼至少 6 個字元。');const {error}=await supabaseClient.auth.signUp({email,password});if(error)return alert('註冊失敗：'+error.message);alert('註冊成功！如果系統要求 Email 驗證，請先完成驗證再登入。')}
-async function signIn(){const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value;if(!email||!password)return alert('請輸入 Email 和密碼。');const {error}=await supabaseClient.auth.signInWithPassword({email,password});if(error)return alert('登入失敗：'+error.message)}
-async function signOut(){await supabaseClient.auth.signOut()}
-supabaseClient.auth.onAuthStateChange(async(_event,session)=>{currentUser=session?.user||null;if(currentUser){setAuthStatus('正在載入你的雲端資料……',true);await loadCloud();subscribeRealtime()}else{if(realtimeChannel){await supabaseClient.removeChannel(realtimeChannel);realtimeChannel=null}setAuthStatus('尚未登入；目前使用本機資料。',false);render()}});
-function subscribeRealtime(){if(realtimeChannel)supabaseClient.removeChannel(realtimeChannel);realtimeChannel=supabaseClient.channel('dungeon-app-sync').on('postgres_changes',{event:'UPDATE',schema:'public',table:'dungeon_app_data',filter:'user_id=eq.'+currentUser.id},payload=>{if(payload.new?.data){data=payload.new.data;data.players=data.players||[];data.dungeons=(data.dungeons||[]).map(d=>({...d,score:Number(d.score??10)}));data.done=data.done||{};data.scores=data.scores||{};localStorage.setItem(KEY,JSON.stringify(data));render()}}).subscribe()}
+function save(){localStorage.setItem(KEY,JSON.stringify(data));render();}
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
 
