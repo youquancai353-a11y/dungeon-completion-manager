@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>副本完成度管理器</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--text:#1f2937;--muted:#6b7280;--primary:#4f46e5;--danger:#dc2626;--border:#e5e7eb;--ok:#16a34a}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;background:var(--bg);color:var(--text)}
+header{background:#111827;color:white;padding:20px 16px;text-align:center}header h1{margin:0 0 6px;font-size:24px}header p{margin:0;color:#cbd5e1;font-size:14px}
+main{max-width:1200px;margin:20px auto;padding:0 14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 2px 8px #00000008}
+h2{font-size:18px;margin:0 0 12px}.row{display:flex;gap:8px;flex-wrap:wrap}
+input,button,select{font:inherit}input{border:1px solid #d1d5db;border-radius:9px;padding:10px 12px;min-width:0;flex:1}
+button{border:0;border-radius:9px;padding:10px 14px;cursor:pointer;font-weight:600;background:var(--primary);color:white}
+button.secondary{background:#e5e7eb;color:#111827}button.danger{background:var(--danger)}
+button.small{padding:7px 10px;font-size:13px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.stat{background:#f8fafc;border-radius:10px;padding:12px;text-align:center}.stat b{display:block;font-size:24px}.stat span{font-size:12px;color:var(--muted)}
+table{width:100%;border-collapse:collapse;min-width:650px}th,td{border-bottom:1px solid var(--border);padding:10px 8px;text-align:center}th{background:#f8fafc;position:sticky;top:0;z-index:1}th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--card);z-index:2}
+.table-wrap{overflow:auto;border:1px solid var(--border);border-radius:10px}.check{width:22px;height:22px;cursor:pointer;accent-color:var(--ok)}
+.progress{height:9px;background:#e5e7eb;border-radius:99px;overflow:hidden}.bar{height:100%;background:var(--primary);transition:.2s}
+.player-actions{display:flex;gap:5px}.empty{color:var(--muted);text-align:center;padding:25px}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:12px}
+@media(max-width:700px){header h1{font-size:20px}.stats{grid-template-columns:repeat(2,1fr)}.card{padding:12px}table{font-size:14px}th,td{padding:8px 6px}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>.auth-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 4px 14px rgba(0,0,0,.04)}.auth-row{display:flex;gap:8px;flex-wrap:wrap}.auth-row input{flex:1;min-width:180px}.auth-status{font-size:13px;color:#6b7280;margin-top:8px}.cloud-ok{color:#15803d}.cloud-off{color:#b45309}</style>
+</head>
+<body>
+<header><h1>🎮 副本完成度管理器</h1><p>手機、電腦皆可使用｜登入後資料自動同步到雲端</p></header>
+<main><section class="auth-card"><h2>☁️ 線上帳號與同步</h2><div class="auth-row"><input id="authEmail" type="email" placeholder="Email"><input id="authPassword" type="password" placeholder="密碼"><button onclick="signUp()">註冊</button><button onclick="signIn()">登入</button><button class="secondary" onclick="signOut()">登出</button></div><div id="authStatus" class="auth-status">尚未登入；目前使用本機資料。</div></section>
+<section class="card">
+<h2>📊 總覽</h2>
+<div class="stats">
+<div class="stat"><b id="playerCount">0</b><span>玩家人數</span></div>
+<div class="stat"><b id="dungeonCount">0</b><span>副本數量</span></div>
+<div class="stat"><b id="doneCount">0</b><span>已完成項目</span></div>
+<div class="stat"><b id="overallRate">0%</b><span>整體完成度</span></div>
+<div class="stat"><b id="totalScore">0</b><span>總完成分數</span></div>
+<div class="stat"><b id="avgScore">0</b><span>平均每人分數</span></div>
+</div>
+</section>
+
+<section class="card">
+<h2>👥 玩家管理</h2>
+<div class="row">
+<input id="playerName" placeholder="輸入玩家名稱，例如：小明">
+<button onclick="addPlayer()">＋ 新增玩家</button>
+</div>
+<div id="playerList" style="margin-top:12px"></div>
+</section>
+
+<section class="card">
+<h2>🏰 副本管理</h2>
+<p style="color:#6b7280;font-size:13px;margin-top:-4px">每個副本可設定預設分數；玩家實際分數 ÷ 副本預設分數 × 100% = 達成百分比。達到或超過預設分數即判定為完成。</p>
+<div class="row">
+<input id="dungeonName" placeholder="輸入副本名稱，例如：黑暗神殿">
+<input id="dungeonScore" type="number" min="0" step="0.01" value="10" style="max-width:140px" placeholder="完成分數">
+<button onclick="addDungeon()">＋ 新增副本</button>
+</div>
+<div id="dungeonList" style="margin-top:12px"></div>
+</section>
+
+<section class="card">
+<h2>✅ 完成度</h2>
+<div id="tableArea"></div>
+</section>
+
+<section class="card">
+<h2>💾 資料</h2>
+<div class="row">
+<button class="secondary" onclick="exportData()">匯出資料</button>
+<button class="secondary" onclick="document.getElementById('importFile').click()">匯入資料</button>
+<button class="danger" onclick="resetAll()">全部清除</button>
+<input id="importFile" type="file" accept=".json" style="display:none" onchange="importData(event)">
+</div>
+</section>
+</main>
+
+<script>
+const KEY="dungeon_completion_manager_v1";
+const SUPABASE_URL="https://zdjfahfgityzaitryozh.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY="sb_publishable_GLuRjdaYVulrcaNTCRuUUA_CziKo_sl";
+const { createClient } = window.supabase;
+const supabaseClient=createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true}});
+let data=JSON.parse(localStorage.getItem(KEY)||'null')||{players:[],dungeons:[],done:{},scores:{}};
+data.scores=data.scores||{};
+let currentUser=null,saveTimer=null,loadingCloud=false,realtimeChannel=null;
+function localSave(){localStorage.setItem(KEY,JSON.stringify(data));render();}
+function save(){localSave();if(currentUser&&!loadingCloud){clearTimeout(saveTimer);saveTimer=setTimeout(saveCloud,500);}}
+async function saveCloud(){if(!currentUser)return;const payload={user_id:currentUser.id,data,updated_at:new Date().toISOString()};const {error}=await supabaseClient.from('dungeon_app_data').upsert(payload,{onConflict:'user_id'});if(error){console.error(error);setAuthStatus('雲端儲存失敗：'+error.message,false)}else setAuthStatus('☁️ 已登入，資料已同步到雲端。',true)}
+function setAuthStatus(msg,ok){const el=document.getElementById('authStatus');el.textContent=msg;el.className='auth-status '+(ok?'cloud-ok':'cloud-off')}
+async function loadCloud(){if(!currentUser)return;loadingCloud=true;const {data:row,error}=await supabaseClient.from('dungeon_app_data').select('data').eq('user_id',currentUser.id).maybeSingle();if(error){loadingCloud=false;setAuthStatus('讀取雲端資料失敗：'+error.message,false);return}if(row&&row.data){data=row.data;data.players=data.players||[];data.dungeons=(data.dungeons||[]).map(d=>({...d,score:Number(d.score??10)}));data.done=data.done||{};data.scores=data.scores||{};localStorage.setItem(KEY,JSON.stringify(data))}else{await saveCloud()}loadingCloud=false;render()}
+async function signUp(){const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value;if(!email||!password)return alert('請輸入 Email 和密碼。');if(password.length<6)return alert('密碼至少 6 個字元。');const {error}=await supabaseClient.auth.signUp({email,password});if(error)return alert('註冊失敗：'+error.message);alert('註冊成功！如果系統要求 Email 驗證，請先完成驗證再登入。')}
+async function signIn(){const email=document.getElementById('authEmail').value.trim(),password=document.getElementById('authPassword').value;if(!email||!password)return alert('請輸入 Email 和密碼。');const {error}=await supabaseClient.auth.signInWithPassword({email,password});if(error)return alert('登入失敗：'+error.message)}
+async function signOut(){await supabaseClient.auth.signOut()}
+supabaseClient.auth.onAuthStateChange(async(_event,session)=>{currentUser=session?.user||null;if(currentUser){setAuthStatus('正在載入你的雲端資料……',true);await loadCloud();subscribeRealtime()}else{if(realtimeChannel){await supabaseClient.removeChannel(realtimeChannel);realtimeChannel=null}setAuthStatus('尚未登入；目前使用本機資料。',false);render()}});
+function subscribeRealtime(){if(realtimeChannel)supabaseClient.removeChannel(realtimeChannel);realtimeChannel=supabaseClient.channel('dungeon-app-sync').on('postgres_changes',{event:'UPDATE',schema:'public',table:'dungeon_app_data',filter:'user_id=eq.'+currentUser.id},payload=>{if(payload.new?.data){data=payload.new.data;data.players=data.players||[];data.dungeons=(data.dungeons||[]).map(d=>({...d,score:Number(d.score??10)}));data.done=data.done||{};data.scores=data.scores||{};localStorage.setItem(KEY,JSON.stringify(data));render()}}).subscribe()}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+
+function addPlayer(){
+ const el=document.getElementById('playerName'),name=el.value.trim();
+ if(!name)return alert('請輸入玩家名稱');
+ data.players.push({id:uid(),name});el.value='';save();
+}
+function addDungeon(){
+ const el=document.getElementById('dungeonName'),scoreEl=document.getElementById('dungeonScore'),name=el.value.trim();
+ if(!name)return alert('請輸入副本名稱');
+ const score=Number(scoreEl.value);
+ if(!Number.isFinite(score)||score<0){alert('分數必須是 0 或以上的數字');return;}
+ data.dungeons.push({id:uid(),name,score});el.value='';scoreEl.value='10';save();
+}
+function renamePlayer(id){
+ const p=data.players.find(x=>x.id===id);if(!p)return;
+ const n=prompt('修改玩家名稱：',p.name);
+ if(n&&n.trim()){p.name=n.trim();save();}
+}
+function removePlayer(id){
+ const p=data.players.find(x=>x.id===id);if(!p)return;
+ if(!confirm(`確定刪除「${p.name}」？`))return;
+ data.players=data.players.filter(x=>x.id!==id);
+ Object.keys(data.done).filter(k=>k.startsWith(id+'__')).forEach(k=>{delete data.done[k];delete data.scores[k];});
+ save();
+}
+function editDungeonScore(id){
+ const d=data.dungeons.find(x=>x.id===id);if(!d)return;
+ const n=prompt('修改副本完成分數：',d.score??10); const score=Number(n);
+ if(Number.isFinite(score)&&score>=0){d.score=score;save();}else alert('請輸入 0 或以上的數字');
+}
+function renameDungeon(id){
+ const d=data.dungeons.find(x=>x.id===id);if(!d)return;
+ const n=prompt('修改副本名稱：',d.name);
+ if(n&&n.trim()){d.name=n.trim();save();}
+}
+function removeDungeon(id){
+ const d=data.dungeons.find(x=>x.id===id);if(!d)return;
+ if(!confirm(`確定刪除「${d.name}」？`))return;
+ data.dungeons=data.dungeons.filter(x=>x.id!==id);
+ Object.keys(data.done).filter(k=>k.endsWith('__'+id)).forEach(k=>{delete data.done[k];delete data.scores[k];});
+ save();
+}
+function isCompleted(p,d){const dungeon=data.dungeons.find(x=>x.id===d); if(!dungeon)return false; const k=p+'__'+d; const score=Number(data.scores[k]??0); const target=Number(dungeon.score??0); return target<=0 ? score>0 : score>=target;}
+function setPlayerScore(p,d,value){const k=p+'__'+d; const score=Number(value); if(!Number.isFinite(score)||score<0)return; data.scores[k]=score; delete data.done[k]; save(); render();}
+
+
+function render(){
+ document.getElementById('playerCount').textContent=data.players.length;
+ document.getElementById('dungeonCount').textContent=data.dungeons.length;
+ const total=data.players.length*data.dungeons.length;
+ const done=data.players.reduce((sum,p)=>sum+data.dungeons.reduce((ds,d)=>ds+(isCompleted(p.id,d.id)?1:0),0),0);
+ const totalScore=data.players.reduce((sum,p)=>sum+data.dungeons.reduce((ds,d)=>{const k=p.id+'__'+d.id; return ds+Number(data.scores[k]??0)},0),0);
+ const avgScore=data.players.length?Math.round(totalScore/data.players.length*100)/100:0;
+ document.getElementById('totalScore').textContent=totalScore;
+ document.getElementById('avgScore').textContent=avgScore;
+ document.getElementById('doneCount').textContent=done;
+ document.getElementById('overallRate').textContent=total?Math.round(done/total*100)+'%':'0%';
+
+ document.getElementById('playerList').innerHTML=data.players.length?data.players.map(p=>`
+ <div class="row" style="align-items:center;margin-bottom:7px">
+   <span style="flex:1"><span class="badge">玩家</span> ${esc(p.name)}</span>
+   <button class="secondary small" onclick="renamePlayer('${p.id}')">修改</button>
+   <button class="danger small" onclick="removePlayer('${p.id}')">刪除</button>
+ </div>`).join(''):'<div class="empty">尚未新增玩家</div>';
+
+ document.getElementById('dungeonList').innerHTML=data.dungeons.length?data.dungeons.map(d=>`
+ <div class="row" style="align-items:center;margin-bottom:7px">
+   <span style="flex:1"><span class="badge">副本</span> ${esc(d.name)} <span style="color:#6b7280;font-size:13px">(預設 ${Number(d.score??10)} 分)</span></span>
+   <button class="secondary small" onclick="renameDungeon('${d.id}')">名稱</button>
+   <button class="secondary small" onclick="editDungeonScore('${d.id}')">預設分數</button>
+   <button class="danger small" onclick="removeDungeon('${d.id}')">刪除</button>
+ </div>`).join(''):'<div class="empty">尚未新增副本</div>';
+
+ if(!data.players.length||!data.dungeons.length){
+   document.getElementById('tableArea').innerHTML='<div class="empty">請先新增玩家和副本</div>';return;
+ }
+
+ // 每個副本獨立顯示完成度與玩家分數
+ let html='';
+ data.dungeons.forEach(d=>{
+   let dDone=0,dScore=0;
+   data.players.forEach(p=>{
+     const k=p.id+'__'+d.id;
+     const score=Number(data.scores[k]??0);
+     if(isCompleted(p.id,d.id)) dDone++;
+     dScore+=score;
+   });
+   const rate=Math.round(dDone/data.players.length*100);
+   html+=`<div class="card" style="margin:0 0 14px;border:2px solid var(--border);box-shadow:none">
+     <div class="row" style="align-items:center;justify-content:space-between">
+       <div><h2 style="margin:0">🏰 ${esc(d.name)}</h2><span style="font-size:12px;color:var(--muted)">預設分數：${Number(d.score??10)} 分</span></div>
+       <div style="text-align:right"><strong style="font-size:22px">${rate}%</strong><div style="font-size:12px;color:var(--muted)">${dDone} / ${data.players.length} 人完成</div></div>
+     </div>
+     <div class="progress" style="margin:10px 0 14px"><div class="bar" style="width:${rate}%"></div></div>
+     <div class="table-wrap"><table style="min-width:520px"><thead><tr><th>玩家</th><th>完成判定</th><th>玩家實際分數</th><th>達成百分比</th></tr></thead><tbody>`;
+   data.players.forEach(p=>{
+     const k=p.id+'__'+d.id,score=Number(data.scores[k]??0),target=Number(d.score??0),checked=isCompleted(p.id,d.id),percent=target<=0?(score>0?100:0):(score/target*100);
+     html+=`<tr><td><strong>${esc(p.name)}</strong></td>
+       <td>${checked?'✅ 已達成':'⬜ 未達成'}</td>
+       <td><input type="number" min="0" step="0.01" value="${score}" onchange="setPlayerScore('${p.id}','${d.id}',this.value)" style="width:100px;padding:7px;text-align:center;border:1px solid #d1d5db;border-radius:7px" title="此玩家在此副本的完成分數"></td>
+       <td><strong>${Math.round(percent*100)/100}%</strong> <span style="color:var(--muted)">(${score} / ${target})</span></td></tr>`;
+   });
+   html+=`</tbody></table></div>
+     <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:13px;color:var(--muted)">
+       <span>本副本已取得分數：<strong style="color:var(--text)">${dScore}</strong></span>
+       <span>完成率：<strong style="color:var(--text)">${rate}%</strong></span>
+     </div>
+   </div>`;
+ });
+ document.getElementById('tableArea').innerHTML=html;
+}
+function exportData(){
+ const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='副本完成度資料.json';a.click();
+ URL.revokeObjectURL(a.href);
+}
+function importData(e){
+ const file=e.target.files[0];if(!file)return;
+ const r=new FileReader();
+ r.onload=()=>{try{
+   const x=JSON.parse(r.result);
+   x.dungeons=(x.dungeons||[]).map(d=>({...d,score:Number(d.score??10)}));
+   if(!Array.isArray(x.players)||!Array.isArray(x.dungeons)||typeof x.done!=='object')throw 0;
+   data=x;data.scores=data.scores||{};save();alert('資料匯入成功！');
+ }catch{alert('資料格式錯誤，無法匯入。')} e.target.value='';};
+ r.readAsText(file);
+}
+function resetAll(){
+ if(confirm('確定要清除所有玩家、副本與完成紀錄嗎？此操作無法復原。')){
+   data={players:[],dungeons:[],done:{},scores:{}};save();
+ }
+}
+document.getElementById('playerName').addEventListener('keydown',e=>{if(e.key==='Enter')addPlayer()});
+document.getElementById('dungeonName').addEventListener('keydown',e=>{if(e.key==='Enter')addDungeon()});
+document.getElementById('dungeonScore').addEventListener('keydown',e=>{if(e.key==='Enter')addDungeon()});
+render();
+</script>
+</body>
+</html>
